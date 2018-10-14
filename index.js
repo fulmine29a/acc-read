@@ -1,14 +1,16 @@
 const SerialPort = require('serialport');
 const Message = require('./Message.js');
 
-function getSpeed() {
+function log(...msg){
+	//console.log(...msg);
+}
+
+function getSpeed(portName = '/dev/ttyACM0') {
 
 	const firstMessage = Message.Message.createMessage([1]).getData();
 
-	let firstMessageInterval;
-
 	return new Promise((resolve, reject) => {
-		let port = new SerialPort('/dev/ttyACM0', {
+		let port = new SerialPort(portName, {
 				baudRate: 19200,
 			},
 			(err) => {
@@ -17,27 +19,67 @@ function getSpeed() {
 					return;
 				}
 
-				console.log('opened');
+				log('opened');
 
-				firstMessageInterval = setInterval(
+				let firstMessageInterval = setInterval(
 					() =>
 						port.write(firstMessage),
 					1000
 				);
 
-				let ml = mainLoop();
+				let watchDog;
+
+				function upWatchDog(){
+					watchDog = setTimeout(()=>{
+							port.close();
+							reject('connection to chronograph timeout')
+						},
+						4000
+					)
+				}
+
+				function downWatchDog(){
+					clearTimeout(watchDog)
+				}
+
+				upWatchDog();
+
+				let
+					ml = mainLoop(),
+					lastWriteBuf = firstMessage,
+					checksumErrorCount = 0
+				;
 
 				port.on('data', (readBuf) => {
-					console.log('read: ', readBuf);
+					clearInterval(firstMessageInterval);
 
-					let next = ml.next(readBuf);
+					downWatchDog();upWatchDog();
 
-					if (next.done) {
-						resolve(next.value);
-						port.close();
-					} else {
-						port.write(next.value);
-						console.log('write: ', next.value);
+					log('read: ', readBuf);
+
+					let readMsg = Message.Message.parseReceived(readBuf);
+
+					if(!readMsg.checkChecksum() && checksumErrorCount < 4){
+						console.error('bad checksum: ', readMsg);
+						port.write(lastWriteBuf);
+						checksumErrorCount++;
+					}else{
+						let next = ml.next(readMsg);
+
+						if (next.done) {
+
+							resolve(next.value);
+							downWatchDog();
+							port.close();
+
+						} else {
+
+							let writeBuf = next.value.getData();
+							log('write: ', writeBuf);
+							lastWriteBuf = writeBuf;
+							port.write(writeBuf);
+							
+						}
 					}
 				});
 			}
@@ -50,26 +92,24 @@ function getSpeed() {
 	function* mainLoop() {
 		yield Message.Message.createMessage([
 			7, 0, 0, 0, 0, 0x18, 0xFB
-		]).getData();
+		]);
 
-		clearInterval(firstMessageInterval);
-
-		let countRecordMsg = Message.Message.parseRecived(yield Message.Message.createMessage([
+		let countRecordMsg = yield Message.Message.createMessage([
 			7, 1
-		]).getData());
+		]);
 
-		let countRecord = countRecordMsg.getData().readUInt8(5);
+		let countRecord = countRecordMsg.getRecordCount();
 
-		console.log('count record', countRecord);
+		log('count record', countRecord);
 
 		let speeds = [];
 
 		for (let i = 0; i < countRecord; i++) {
-			let recordMsg = Message.Message.parseRecived(yield Message.Message.createMessage([
+			let recordMsg = yield Message.Message.createMessage([
 				7, 2, i
-			]).getData());
+			]);
 
-			speeds.push(recordMsg.getData().readUInt16LE(5) / 10);
+			speeds.push(recordMsg.getSpeed());
 		}
 
 		return speeds;
@@ -77,7 +117,14 @@ function getSpeed() {
 }
 
 
-getSpeed().then(
-	(speed) =>
-		console.log(speed.join(', '))
-);
+getSpeed(process.argv[2])
+	.then(
+		(speed) =>
+			console.log(speed.join(', '))
+	)
+	.catch((err)=> {
+			console.error(err);
+			process.exit();
+		}
+	)
+;

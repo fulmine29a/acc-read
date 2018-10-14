@@ -1,7 +1,7 @@
 module.exports.Message = class Message{
 	constructor(){
-		this.data = Buffer.alloc(24, 0);
 		this.MSG_LEN = 24;
+		this.data = Buffer.alloc(this.MSG_LEN, 0);
 	}
 	
 	static createMessage(arr){
@@ -13,15 +13,10 @@ module.exports.Message = class Message{
 		return msg;
 	}
 
-	static parseRecived(buff){
+	static parseReceived(buff){
 		let msg = new Message();
 
 		msg.data.fill(buff);
-		if(msg.calcChecksum() != msg.data[msg.MSG_LEN - 1]) {
-			//throw new Error('bad message checksum');
-			console.error('bad checksum')
-		}
-
 		return msg;
 	}
 
@@ -35,7 +30,27 @@ module.exports.Message = class Message{
 		return sum;
 	}
 
+	checkChecksum(){
+		return this.calcChecksum() == this.data[this.MSG_LEN - 1];
+	}
+
 	getData(){
 		return this.data;
+	}
+
+	getRecordCount(){
+		if( (this.data.readUInt8(0) == 7) && (this.data.readUInt8(1) == 1) ){
+			return this.data.readUInt8(5)
+		}else {
+			throw new Error('invalid message type')
+		}
+	}
+
+	getSpeed(){
+		if( (this.data.readUInt8(0) == 7) && (this.data.readUInt8(1) == 2) ) {
+			return this.data.readUInt16LE(5) / 10
+		}else{
+			throw new Error('invalid message type')
+		}
 	}
 };
