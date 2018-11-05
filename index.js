@@ -1,8 +1,10 @@
 const SerialPort = require('serialport');
 const {Message} = require('./Message.js');
+const path = require('path');
+const fs = require('fs');
 
 function log(...msg){
-	console.log(...msg);
+	// console.log(...msg);
 }
 
 function getSpeed(portName = '/dev/ttyACM0') {
@@ -107,10 +109,12 @@ function getSpeed(portName = '/dev/ttyACM0') {
 
 		log('count record', countRecord);
 
-		let speeds = [], delays = [];
+		let speeds = [], delays = [], type;
 
 		switch (modeMessage.result) {
 			case(0):{ // только скорость
+					type = 'speed';
+
 					for (let i = 0; i < countRecord; i++) {
 						let recordMsg = yield new Message({ // запрос каждого результата
 							type:7,
@@ -122,7 +126,10 @@ function getSpeed(portName = '/dev/ttyACM0') {
 					}
 				}
 				break;
+
 			case(1):{ // скорость и скорострельность
+					type = 'delay';
+
 					for (let i = 1; i < countRecord; i++) {  // 1й результат всегда 0/65000
 						let speedMsg = yield new Message({ // запрос скорости
 							type:7,
@@ -142,20 +149,36 @@ function getSpeed(portName = '/dev/ttyACM0') {
 					}
 				}
 				break;
+
 			default:
 				throw Error('unknown chrone mode')
 		}
 
+		yield new Message({type:8, subType: 1}); // очистка данных на хроне
+		// type:8 - почему-то в режиме с подсчётом скорострельности чистит только данные интервалов
 
-		return {speeds, delays};
+		return {speeds, delays, type};
 	}
+}
+
+function saveResult(result){
+	fs.open(path.join(process.cwd(), 'results', Date.now().toString() + '.json'), 'w', (err, hFile) =>
+		!err && fs.write(hFile, JSON.stringify(result), (err) =>
+			fs.close(hFile, f=>f)
+		)
+	)
 }
 
 
 getSpeed(process.argv[2])
 	.then(
-		(result) =>
-			console.log(result)
+		(result) => {
+			console.log(result);
+			if(result.speeds.length){
+				result.chroneModel = 'Strelok ACC-0015';
+				saveResult(result);
+			}
+		}
 	)
 	.catch((err)=> {
 			console.error(err);
