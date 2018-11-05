@@ -27,7 +27,7 @@ module.exports.Message = class Message{
 			sum+=this.data[i];
 		}
 
-		return sum;
+		return sum & 0xFF;
 	}
 
 	checkChecksum(){

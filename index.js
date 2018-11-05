@@ -1,5 +1,5 @@
 const SerialPort = require('serialport');
-const Message = require('./Message.js');
+const {Message} = require('./Message.js');
 
 function log(...msg){
 	//console.log(...msg);
@@ -7,7 +7,7 @@ function log(...msg){
 
 function getSpeed(portName = '/dev/ttyACM0') {
 
-	const firstMessage = Message.Message.createMessage([1]).getData();
+	const firstMessage = Message.createMessage([1]).getData();
 
 	return new Promise((resolve, reject) => {
 		let port = new SerialPort(portName, {
@@ -57,13 +57,15 @@ function getSpeed(portName = '/dev/ttyACM0') {
 
 					log('read: ', readBuf);
 
-					let readMsg = Message.Message.parseReceived(readBuf);
+					let readMsg = Message.parseReceived(readBuf);
 
 					if(!readMsg.checkChecksum() && checksumErrorCount < 4){
 						console.error('bad checksum: ', readMsg);
 						port.write(lastWriteBuf);
 						checksumErrorCount++;
 					}else{
+						checksumErrorCount = 0;
+
 						let next = ml.next(readMsg);
 
 						if (next.done) {
@@ -90,11 +92,11 @@ function getSpeed(portName = '/dev/ttyACM0') {
 	});
 
 	function* mainLoop() {
-		yield Message.Message.createMessage([
+		yield Message.createMessage([
 			7, 0, 0, 0, 0, 0x18, 0xFB
 		]);
 
-		let countRecordMsg = yield Message.Message.createMessage([
+		let countRecordMsg = yield Message.createMessage([
 			7, 1
 		]);
 
@@ -105,7 +107,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 		let speeds = [];
 
 		for (let i = 0; i < countRecord; i++) {
-			let recordMsg = yield Message.Message.createMessage([
+			let recordMsg = yield Message.createMessage([
 				7, 2, i
 			]);
 
