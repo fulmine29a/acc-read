@@ -1,56 +1,49 @@
+const MSG_LEN = 24;
+
 module.exports.Message = class Message{
-	constructor(){
-		this.MSG_LEN = 24;
-		this.data = Buffer.alloc(this.MSG_LEN, 0);
-	}
-	
-	static createMessage(arr){
-		let msg = new Message();
 
-		msg.data.fill(Buffer.from(arr), 0, arr.length);
-		msg.data[msg.MSG_LEN - 1] = msg.calcChecksum();
+	constructor(msgFields){
+		this.type = msgFields.type;
+		this.subType = msgFields.subType;
 
-		return msg;
+		this.result = msgFields.result;
+		this.param = msgFields.param;
+
+		this.checksumOk = msgFields.checksumOk
 	}
 
 	static parseReceived(buff){
-		let msg = new Message();
+		let rawData = Buffer.alloc(MSG_LEN, 0);
 
-		msg.data.fill(buff);
-		return msg;
+		rawData.fill(buff);
+
+		return new this({
+			type: rawData.readUInt8(0),
+			subType: rawData.readUInt8(1),
+			result: rawData.readUInt16LE(5),
+			checksumOk: this.calcChecksum(rawData) == rawData.readUInt8(MSG_LEN - 1)
+		});
 	}
 
-	calcChecksum(){
+	static calcChecksum(buff){
 		let sum = 0;
 
-		for(let i = 0; i < this.MSG_LEN - 1; i++){
-			sum+=this.data[i];
+		for(let i = 0; i < MSG_LEN - 1; i++){
+			sum+=buff[i];
 		}
 
 		return sum & 0xFF;
 	}
 
-	checkChecksum(){
-		return this.calcChecksum() == this.data[this.MSG_LEN - 1];
-	}
+	prepareToSend(){
+		let rawData = Buffer.alloc(MSG_LEN, 0);
 
-	getData(){
-		return this.data;
-	}
+		rawData.writeUInt8(this.type, 0);
+		rawData.writeUInt8(this.subType, 1);
+		rawData.writeUInt16LE(this.param, 2);
 
-	getRecordCount(){
-		if( (this.data.readUInt8(0) == 7) && (this.data.readUInt8(1) == 1) ){
-			return this.data.readUInt8(5)
-		}else {
-			throw new Error('invalid message type')
-		}
-	}
+		rawData.writeUInt8(this.constructor.calcChecksum(rawData), MSG_LEN-1);
 
-	getSpeed(){
-		if( (this.data.readUInt8(0) == 7) && (this.data.readUInt8(1) == 2) ) {
-			return this.data.readUInt16LE(5) / 10
-		}else{
-			throw new Error('invalid message type')
-		}
+		return rawData;
 	}
 };

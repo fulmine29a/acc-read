@@ -2,12 +2,12 @@ const SerialPort = require('serialport');
 const {Message} = require('./Message.js');
 
 function log(...msg){
-	//console.log(...msg);
+	console.log(...msg);
 }
 
 function getSpeed(portName = '/dev/ttyACM0') {
 
-	const firstMessage = Message.createMessage([1]).getData();
+	const firstMessage = new Message({type:1}).prepareToSend();
 
 	return new Promise((resolve, reject) => {
 		let port = new SerialPort(portName, {
@@ -59,7 +59,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 
 					let readMsg = Message.parseReceived(readBuf);
 
-					if(!readMsg.checkChecksum() && checksumErrorCount < 4){
+					if(!readMsg.checksumOk && checksumErrorCount < 4){
 						console.error('bad checksum: ', readMsg);
 						port.write(lastWriteBuf);
 						checksumErrorCount++;
@@ -76,7 +76,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 
 						} else {
 
-							let writeBuf = next.value.getData();
+							let writeBuf = next.value.prepareToSend();
 							log('write: ', writeBuf);
 							lastWriteBuf = writeBuf;
 							port.write(writeBuf);
@@ -92,37 +92,70 @@ function getSpeed(portName = '/dev/ttyACM0') {
 	});
 
 	function* mainLoop() {
-		yield Message.createMessage([
-			7, 0, 0, 0, 0, 0x18, 0xFB
-		]);
+		let modeMessage = yield new Message({ // запрос типа имеюших результатов
+			type: 7,
+			subType: 0,
+			param: 0x18FB
+		});
 
-		let countRecordMsg = yield Message.createMessage([
-			7, 1
-		]);
+		let countRecordMsg = yield new Message({ // запрос количества результатов
+			type:7,
+			subType:1
+		});
 
-		let countRecord = countRecordMsg.getRecordCount();
+		let countRecord = countRecordMsg.result;
 
 		log('count record', countRecord);
 
-		let speeds = [];
+		let speeds = [], delays = [];
 
-		for (let i = 0; i < countRecord; i++) {
-			let recordMsg = yield Message.createMessage([
-				7, 2, i
-			]);
+		switch (modeMessage.result) {
+			case(0):{ // только скорость
+					for (let i = 0; i < countRecord; i++) {
+						let recordMsg = yield new Message({ // запрос каждого результата
+							type:7,
+							subType: 2,
+							param: i
+						});
 
-			speeds.push(recordMsg.getSpeed());
+						speeds.push(recordMsg.result / 10);
+					}
+				}
+				break;
+			case(1):{ // скорость и скорострельность
+					for (let i = 1; i < countRecord; i++) {  // 1й результат всегда 0/65000
+						let speedMsg = yield new Message({ // запрос скорости
+							type:7,
+							subType: 2,
+							param: i*2
+						});
+
+						speeds.push(speedMsg.result / 10);
+
+						let delayMsg = yield new Message({ // запрос интервалов
+							type:7,
+							subType: 2,
+							param: i*2+1
+						});
+
+						delays.push(delayMsg.result / 1000);
+					}
+				}
+				break;
+			default:
+				throw Error('unknown chrone mode')
 		}
 
-		return speeds;
+
+		return {speeds, delays};
 	}
 }
 
 
 getSpeed(process.argv[2])
 	.then(
-		(speed) =>
-			console.log(speed.join(', '))
+		(result) =>
+			console.log(result)
 	)
 	.catch((err)=> {
 			console.error(err);
