@@ -109,7 +109,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 
 		log('count record', countRecord);
 
-		let speeds = [], delays = [], type;
+		let speeds = [], rateOfFire = [], type;
 
 		switch (modeMessage.result) {
 			case(0):{ // только скорость
@@ -128,7 +128,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 				break;
 
 			case(1):{ // скорость и скорострельность
-					type = 'delay';
+					type = 'speed,rateOfFire';
 
 					for (let i = 1; i < countRecord; i++) {  // 1й результат всегда 0/65000
 						let speedMsg = yield new Message({ // запрос скорости
@@ -145,7 +145,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 							param: i*2+1
 						});
 
-						delays.push(delayMsg.result / 1000);
+						rateOfFire.push(delayMsg.result / 1000);
 					}
 				}
 				break;
@@ -155,9 +155,9 @@ function getSpeed(portName = '/dev/ttyACM0') {
 		}
 
 		yield new Message({type:8, subType: 1}); // очистка данных на хроне
-		// type:8 - почему-то в режиме с подсчётом скорострельности чистит только данные интервалов
+		// type:8, subType:0 - в режиме с подсчётом скорострельности чистит только данные интервалов
 
-		return {speeds, delays, type};
+		return {speeds, rateOfFire, type};
 	}
 }
 
@@ -175,7 +175,7 @@ getSpeed(process.argv[2])
 		(result) => {
 			console.log(result);
 			if(result.speeds.length){
-				result.chroneModel = 'Strelok ACC-0015';
+				result.chroneModel = 'strelok_acc-0015';
 				saveResult(result);
 			}
 		}
