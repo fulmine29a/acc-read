@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 
 function log(...msg){
-	// console.log(...msg);
+	console.log(...msg);
 }
 
 function getSpeed(portName = '/dev/ttyACM0') {
@@ -14,6 +14,17 @@ function getSpeed(portName = '/dev/ttyACM0') {
 	return new Promise((resolve, reject) => {
 		let port = new SerialPort(portName, {
 				baudRate: 19200,
+				autoOpen: true,
+				dataBits: 8,
+				hupcl: true,
+				lock: true,
+				parity: 'none',
+				rtscts: false,
+				stopBits: 1,
+				xany: false,
+				xoff: false,
+				xon: false,
+				highWaterMark: 64 * 1024,
 			},
 			(err) => {
 				if (err) {
@@ -36,7 +47,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 							port.close();
 							reject('connection to chronograph timeout')
 						},
-						4000
+						10000
 					)
 				}
 
@@ -49,6 +60,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 				let
 					ml = mainLoop(),
 					lastWriteBuf = firstMessage,
+					lastMesssage = null;
 					checksumErrorCount = 0
 				;
 
@@ -61,8 +73,15 @@ function getSpeed(portName = '/dev/ttyACM0') {
 
 					let readMsg = Message.parseReceived(readBuf);
 
-					if(!readMsg.checksumOk && checksumErrorCount < 4){
-						console.error('bad checksum: ', readMsg);
+					if(
+						(!readMsg.checksumOk && checksumErrorCount < 4)
+						|| (lastMesssage && ( (readMsg.type != lastMesssage.type) || (readMsg.subType != lastMesssage.subType) ))
+					){
+						if(readMsg.checksumOk) {
+							console.error('bug message order');
+						}else{
+							console.error( 'bad checksum: ', readMsg);
+						}
 						port.write(lastWriteBuf);
 						checksumErrorCount++;
 					}else{
@@ -77,12 +96,13 @@ function getSpeed(portName = '/dev/ttyACM0') {
 							port.close();
 
 						} else {
-
-							let writeBuf = next.value.prepareToSend();
-							log('write: ', writeBuf);
-							lastWriteBuf = writeBuf;
-							port.write(writeBuf);
-							
+							if(next.value !== null) {
+								lastMesssage = next.value;
+								let writeBuf = lastMesssage.prepareToSend();
+								log('write: ', writeBuf);
+								lastWriteBuf = writeBuf;
+								port.write(writeBuf);
+							}
 						}
 					}
 				});
@@ -154,7 +174,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 				throw Error('unknown chrone mode')
 		}
 
-		yield new Message({type:8, subType: 1}); // очистка данных на хроне
+//		yield new Message({type:8, subType: 1}); // очистка данных на хроне
 		// type:8, subType:0 - в режиме с подсчётом скорострельности чистит только данные интервалов
 
 		return {speeds, rateOfFire, type};
