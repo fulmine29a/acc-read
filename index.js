@@ -60,7 +60,7 @@ function getSpeed(portName = '/dev/ttyACM0') {
 				let
 					ml = mainLoop(),
 					lastWriteBuf = firstMessage,
-					lastMesssage = null;
+					lastMessage = null;
 					checksumErrorCount = 0
 				;
 
@@ -75,7 +75,11 @@ function getSpeed(portName = '/dev/ttyACM0') {
 
 					if(
 						(!readMsg.checksumOk && checksumErrorCount < 4)
-						|| (lastMesssage && ( (readMsg.type != lastMesssage.type) || (readMsg.subType != lastMesssage.subType) ))
+						|| (lastMessage && (
+								( (readMsg.type != lastMessage.type) || (readMsg.subType != lastMessage.subType) )
+								|| ( (lastMessage.type == 7) && (lastMessage.subType == 2) && (lastMessage.param != readMsg.param))
+							)
+						)
 					){
 						if(readMsg.checksumOk) {
 							console.error('bug message order');
@@ -83,6 +87,8 @@ function getSpeed(portName = '/dev/ttyACM0') {
 							console.error( 'bad checksum: ', readMsg);
 						}
 						port.write(lastWriteBuf);
+						log('write (repeat): ', lastWriteBuf);
+
 						checksumErrorCount++;
 					}else{
 						checksumErrorCount = 0;
@@ -97,11 +103,11 @@ function getSpeed(portName = '/dev/ttyACM0') {
 
 						} else {
 							if(next.value !== null) {
-								lastMesssage = next.value;
-								let writeBuf = lastMesssage.prepareToSend();
+								lastMessage = next.value;
+								let writeBuf = lastMessage.prepareToSend();
 								log('write: ', writeBuf);
 								lastWriteBuf = writeBuf;
-								port.write(writeBuf);
+								setTimeout( ()=>port.write(writeBuf), 200);
 							}
 						}
 					}

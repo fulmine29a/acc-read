@@ -21,6 +21,7 @@ module.exports.Message = class Message{
 			type: rawData.readUInt8(0),
 			subType: rawData.readUInt8(1),
 			result: rawData.readUInt16LE(5),
+			param: rawData.readUInt16LE(2),
 			checksumOk: this.calcChecksum(rawData) == rawData.readUInt8(MSG_LEN - 1)
 		});
 	}
